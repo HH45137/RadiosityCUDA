@@ -50,6 +50,13 @@ __device__ float3 CalculateTriangleNormal(const face_s &face) {
     return normalized(cross(edge1, edge2));
 }
 
+__device__ float CalculateTriangleArea(const float3 vertices[3]) {
+    const float3 edge1 = vertices[1] - vertices[0];
+    const float3 edge2 = vertices[2] - vertices[0];
+
+    return length(cross(edge1, edge2)) / 2.0f;
+}
+
 __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j) {
     // The centroid of the faces
     float3 i_centroid = CalculateTriangleCentroid(face_i);
@@ -91,8 +98,11 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
             return -1919.810f;
         }
     }
+    // The face area
+    float face_area = CalculateTriangleArea(map_to_floor_from_hemisphere);
 
-    return 1.0f;
+    // The final form factor
+    return face_area / hemisphere_floor_area;
 }
 
 __global__ void Calculate(
@@ -215,10 +225,18 @@ int main(int argc, char *argv[]) {
         cudaMemcpyDeviceToHost
     ));
 
-    // Print
+    // Print results
     for (int i = 0; i < host_var.form_factor_area_count; i += host_var.face_count) {
-        std::cout << "Face first index = " << i << "\tfirst value = " << host_var.form_factors_area[i] << std::endl;
+        std::cout << "\n";
+        std::cout << "face i index = " << i << "\t\tvalue = " << host_var.form_factors_area[i] << std::endl;
+        for (int j = 0; j < host_var.face_count; j++) {
+            std::cout << "\t\tface j index = " << i + j <<
+                    "\t\tvalue = " << host_var.form_factors_area[i + j] << std::endl;
+        }
     }
+    // for (int i = 0; i < 10000; i += 1) {
+    //     std::cout << "Face first index = " << i << "\tfirst value = " << host_var.form_factors_area[i] << std::endl;
+    // }
     std::cout << "All the form-factors have been successfully calculated." << std::endl;
 
     std::cout << "End GPU side work." << std::endl;

@@ -51,6 +51,7 @@ __device__ float CalculateFormFactor(face_s *face_i, face_s *face_j) {
 
     // The distance between the faces
     float f_ij_distance = fabsf(length3(sub3(f_i_centroid, f_j_centroid)));
+    result = f_ij_distance;
 
     return result;
 }
@@ -66,17 +67,20 @@ __global__ void Calculate(
         return;
     }
 
-    face_s *face_i = &faces[idx];
-    face_s *face_j = nullptr;
+    // The face "i" index
+    const int f_i_idx = idx / face_count;
+    face_s *f_i = &faces[f_i_idx];
 
-    for (int i = 0; i < face_count; i++) {
-        // Skip self
-        if (i == idx) {
+    // The face "j" index
+    for (int f_j_idx = 0; f_j_idx < face_count; f_j_idx++) {
+        // Skip the current self face
+        if (f_i_idx == f_j_idx) {
             continue;
         }
+        face_s *f_j = &faces[f_j_idx];
 
-        face_j = &faces[i];
-        form_factors_area[idx] = CalculateFormFactor(face_i, face_j);
+        // To calculate form-factor between the tow face
+        form_factors_area[idx] = CalculateFormFactor(f_i, f_j);
     }
 }
 
@@ -164,9 +168,9 @@ int main(int argc, char *argv[]) {
     ));
 
     // Print
-    /*for (int i = 0; i < host_var.form_factor_area_count; i++) {
-        std::cout << host_var.form_factors_area[i] << std::endl;
-    }*/
+    for (int i = 0; i < host_var.form_factor_area_count; i += host_var.face_count) {
+        std::cout << "Face first index = " << i << "\tfirst value = " << host_var.form_factors_area[i] << std::endl;
+    }
     std::cout << "All the form-factors have been successfully calculated." << std::endl;
 
     std::cout << "End GPU side work." << std::endl;

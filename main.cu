@@ -37,21 +37,60 @@ struct {
 } host_var;
 
 
-__device__ float3 CalculateTriangleCentroid(face_s &face) {
+__device__ float3 CalculateTriangleCentroid(const face_s &face) {
     return (face.vertices[0].position +
             face.vertices[1].position +
             face.vertices[2].position) / 3.0f;
 }
 
-__device__ float CalculateFormFactor(face_s &face_i, face_s &face_j) {
+__device__ float3 CalculateTriangleNormal(const face_s &face) {
+    float3 edge1 = face.vertices[1].position - face.vertices[0].position;
+    float3 edge2 = face.vertices[2].position - face.vertices[0].position;
+
+    return normalized(cross(edge1, edge2));
+}
+
+__device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j) {
     // The centroid of the faces
-    float3 f_i_centroid = CalculateTriangleCentroid(face_i);
-    float3 f_j_centroid = CalculateTriangleCentroid(face_j);
+    float3 i_centroid = CalculateTriangleCentroid(face_i);
+    float3 j_centroid = CalculateTriangleCentroid(face_j);
 
+    // The direction between the faces
+    float3 i_to_j_direction = i_centroid - j_centroid;
     // The distance between the faces
-    float f_ij_distance = fabsf(length(f_i_centroid - f_j_centroid));
+    float i_to_j_distance = fabsf(length(i_to_j_direction));
+    // The vectors form the three corners of face j to the centroid of face i
+    float3 i_corner_to_j_centroid[3] = {
+        normalized(face_j.vertices[0].position - i_centroid),
+        normalized(face_j.vertices[1].position - i_centroid),
+        normalized(face_j.vertices[2].position - i_centroid)
+    };
+    // The normal of face i
+    float3 i_normal = CalculateTriangleNormal(face_i);
+    // The floor area of hemisphere
+    const float hemisphere_radius = 1.0f;
+    const float hemisphere_floor_area = CUDART_PI_F * (hemisphere_radius * hemisphere_radius);
+    // Map the face i on hemisphere
+    float3 i_corner_on_hemisphere[3] = {
+        i_centroid + i_corner_to_j_centroid[0] * hemisphere_radius,
+        i_centroid + i_corner_to_j_centroid[1] * hemisphere_radius,
+        i_centroid + i_corner_to_j_centroid[2] * hemisphere_radius
+    };
+    // Map "i_corner_on_hemisphere" to floor from hemisphere
+    float3 map_to_floor_from_hemisphere[3] = {
+        i_centroid + i_normal * dot(i_corner_on_hemisphere[0] - i_centroid, i_normal),
+        i_centroid + i_normal * dot(i_corner_on_hemisphere[1] - i_centroid, i_normal),
+        i_centroid + i_normal * dot(i_corner_on_hemisphere[2] - i_centroid, i_normal)
+    };
 
-    return f_ij_distance;
+    float is_vertical{};
+    for (int i = 0; i < 3; i++) {
+        is_vertical += cross(map_to_floor_from_hemisphere[i], i_normal).x +
+                cross(map_to_floor_from_hemisphere[i], i_normal).y +
+                cross(map_to_floor_from_hemisphere[i], i_normal).z;
+    }
+
+    return is_vertical;
 }
 
 __global__ void Calculate(

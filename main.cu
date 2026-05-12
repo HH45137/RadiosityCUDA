@@ -118,17 +118,16 @@ __global__ void Calculate(
 
     // The face "i" index
     const int f_i_idx = idx / face_count;
-
     // The face "j" index
-    for (int f_j_idx = 0; f_j_idx < face_count; f_j_idx++) {
-        // Skip the current self face
-        if (f_i_idx == f_j_idx) {
-            continue;
-        }
+    const int f_j_idx = idx % face_count;
 
-        // To calculate form-factor between the tow face
-        form_factors_area[idx] = CalculateFormFactor(faces[f_i_idx], faces[f_j_idx]);
+    // Skip the current self face
+    if (f_i_idx == f_j_idx) {
+        return;
     }
+
+    // To calculate form-factor between the tow face
+    form_factors_area[idx] = CalculateFormFactor(faces[f_i_idx], faces[f_j_idx]);
 }
 
 int main(int argc, char *argv[]) {
@@ -227,16 +226,11 @@ int main(int argc, char *argv[]) {
 
     // Print results
     for (int i = 0; i < host_var.form_factor_area_count; i += host_var.face_count) {
-        std::cout << "\n";
-        std::cout << "face i index = " << i << "\t\tvalue = " << host_var.form_factors_area[i] << std::endl;
+        std::cout << "\nForm factors from face " << (i / host_var.face_count) << " to others:\n";
         for (int j = 0; j < host_var.face_count; j++) {
-            std::cout << "\t\tface j index = " << i + j <<
-                    "\t\tvalue = " << host_var.form_factors_area[i + j] << std::endl;
+            std::cout << "\t-> face " << j << " : " << host_var.form_factors_area[i + j] << std::endl;
         }
     }
-    // for (int i = 0; i < 10000; i += 1) {
-    //     std::cout << "Face first index = " << i << "\tfirst value = " << host_var.form_factors_area[i] << std::endl;
-    // }
     std::cout << "All the form-factors have been successfully calculated." << std::endl;
 
     std::cout << "End GPU side work." << std::endl;

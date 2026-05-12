@@ -56,7 +56,7 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
     float3 j_centroid = CalculateTriangleCentroid(face_j);
 
     // The direction between the faces
-    float3 i_to_j_direction = i_centroid - j_centroid;
+    float3 i_to_j_direction = j_centroid - i_centroid;
     // The distance between the faces
     float i_to_j_distance = fabsf(length(i_to_j_direction));
     // The vectors form the three corners of face j to the centroid of face i
@@ -78,19 +78,17 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
     };
     // Map "i_corner_on_hemisphere" to floor from hemisphere
     float3 map_to_floor_from_hemisphere[3] = {
-        i_centroid + i_normal * dot(i_corner_on_hemisphere[0] - i_centroid, i_normal),
-        i_centroid + i_normal * dot(i_corner_on_hemisphere[1] - i_centroid, i_normal),
-        i_centroid + i_normal * dot(i_corner_on_hemisphere[2] - i_centroid, i_normal)
+        i_corner_on_hemisphere[0] - i_normal * dot(i_corner_on_hemisphere[0] - i_centroid, i_normal),
+        i_corner_on_hemisphere[1] - i_normal * dot(i_corner_on_hemisphere[1] - i_centroid, i_normal),
+        i_corner_on_hemisphere[2] - i_normal * dot(i_corner_on_hemisphere[2] - i_centroid, i_normal)
     };
 
-    float is_vertical{};
-    for (int i = 0; i < 3; i++) {
-        is_vertical += cross(map_to_floor_from_hemisphere[i], i_normal).x +
-                cross(map_to_floor_from_hemisphere[i], i_normal).y +
-                cross(map_to_floor_from_hemisphere[i], i_normal).z;
+    // Test map_to_floor_from_hemisphere
+    if (fabsf(dot(map_to_floor_from_hemisphere[0] - i_centroid, i_normal)) > 1e-5f) {
+        return 0.0f;
     }
 
-    return is_vertical;
+    return 1.0f;
 }
 
 __global__ void Calculate(

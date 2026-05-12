@@ -1,6 +1,7 @@
 ﻿#include <iostream>
 #include <fstream>
 
+// #define OBJL_CONSOLE_OUTPUT
 #include "OBJ_Loader.h"
 
 #include "math.cu"
@@ -37,59 +38,19 @@ struct {
 __device__ float CalculateFormFactor(face_s *face_i, face_s *face_j) {
     float result{};
 
-    /*const float3 f_i_v1 = face_i->vertices[0].position;
+    const float3 f_i_v1 = face_i->vertices[0].position;
     const float3 f_i_v2 = face_i->vertices[1].position;
     const float3 f_i_v3 = face_i->vertices[2].position;
     const float3 f_j_v1 = face_j->vertices[0].position;
     const float3 f_j_v2 = face_j->vertices[1].position;
-    const float3 f_j_v3 = face_j->vertices[2].position;*/
+    const float3 f_j_v3 = face_j->vertices[2].position;
 
-    /*
+    // The centroid of the faces
     float3 f_i_centroid = div3(add3(add3(f_i_v1, f_i_v2), f_i_v3), float3{3, 3, 3});
     float3 f_j_centroid = div3(add3(add3(f_j_v1, f_j_v2), f_j_v3), float3{3, 3, 3});
-    result = dot3(f_i_centroid, f_j_centroid);
-    */
 
-    const float4 f_i_v1 = {
-        face_i->vertices[0].position.x,
-        face_i->vertices[0].position.y,
-        face_i->vertices[0].position.z,
-        0.0f
-    };
-    const float4 f_i_v2 = {
-        face_i->vertices[1].position.x,
-        face_i->vertices[1].position.y,
-        face_i->vertices[1].position.z,
-        0.0f
-    };
-    const float4 f_i_v3 = {
-        face_i->vertices[2].position.x,
-        face_i->vertices[2].position.y,
-        face_i->vertices[2].position.z,
-        0.0f
-    };
-    const float4 f_j_v1 = {
-        face_j->vertices[0].position.x,
-        face_j->vertices[0].position.y,
-        face_j->vertices[0].position.z,
-        0.0f
-    };
-    const float4 f_j_v2 = {
-        face_j->vertices[1].position.x,
-        face_j->vertices[1].position.y,
-        face_j->vertices[1].position.z,
-        0.0f
-    };
-    const float4 f_j_v3 = {
-        face_j->vertices[2].position.x,
-        face_j->vertices[2].position.y,
-        face_j->vertices[2].position.z,
-        0.0f
-    };
-
-    float4 f_i_centroid = div4(add4(add4(f_i_v1, f_i_v2), f_i_v3), float4{3, 3, 3, 3});
-    float4 f_j_centroid = div4(add4(add4(f_j_v1, f_j_v2), f_j_v3), float4{3, 3, 3, 3});
-    result = dot4(f_i_centroid, f_j_centroid);
+    // The distance between the faces
+    float f_ij_distance = fabsf(length3(sub3(f_i_centroid, f_j_centroid)));
 
     return result;
 }
@@ -101,7 +62,7 @@ __global__ void Calculate(
 ) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (idx >= face_count) {
+    if (idx >= face_count * face_count) {
         return;
     }
 
@@ -122,13 +83,14 @@ __global__ void Calculate(
 int main(int argc, char *argv[]) {
     std::vector<face_s> mesh{};
 
+    std::cout << "Starting to load the mesh..." << std::endl;
     objl::Loader obj_loader;
     bool load_result = obj_loader.LoadFile("../assets/gi_test.obj");
     if (load_result) {
         for (int i = 0; i < obj_loader.LoadedMeshes.size(); i++) {
             objl::Mesh curMesh = obj_loader.LoadedMeshes[i];
 
-            std::cout << "Mesh name" << i << ": " << curMesh.MeshName << "\n";
+            std::cout << "Mesh" << ": " << curMesh.MeshName << "\n";
 
             for (int j = 0; j < curMesh.Indices.size(); j += 3) {
                 unsigned int cur_face_idx = curMesh.Indices[j];
@@ -158,10 +120,12 @@ int main(int argc, char *argv[]) {
     } else {
         throw std::runtime_error("No mesh loaded");
     }
+    std::cout << "Mesh loading successful." << std::endl;
 
+    std::cout << "Start the work on the GPU side..." << std::endl;
     // Variable
     host_var.face_count = mesh.size();
-    host_var.form_factor_area_count = host_var.face_count;
+    host_var.form_factor_area_count = host_var.face_count * host_var.face_count;
     host_var.form_factors_area = new float[host_var.form_factor_area_count]();
 
     // Initial
@@ -200,14 +164,19 @@ int main(int argc, char *argv[]) {
     ));
 
     // Print
-    for (int i = 0; i < host_var.form_factor_area_count; i++) {
+    /*for (int i = 0; i < host_var.form_factor_area_count; i++) {
         std::cout << host_var.form_factors_area[i] << std::endl;
-    }
+    }*/
+    std::cout << "All the form-factors have been successfully calculated." << std::endl;
 
+    std::cout << "End GPU side work." << std::endl;
+
+    std::cout << "Cleaning the program..." << std::endl;
     // Destroy
     CHECK_CUDA_ERROR(cudaFree(device_var.faces));
     CHECK_CUDA_ERROR(cudaFree(device_var.form_factors_area));
     delete[] host_var.form_factors_area;
+    mesh.clear();
 
     return 0;
 }

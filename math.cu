@@ -76,3 +76,7 @@ static __device__ float4 div4(float4 a, float4 b) {
         a.w / b.w
     };
 }
+
+static __device__ float length3(const float3 a) {
+    return sqrtf(powf(a.x, 2) + powf(a.y, 2) + powf(a.z, 2));
+}

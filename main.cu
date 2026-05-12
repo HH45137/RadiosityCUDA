@@ -89,7 +89,7 @@ int main(int argc, char *argv[]) {
 
     std::cout << "Starting to load the mesh..." << std::endl;
     objl::Loader obj_loader;
-    bool load_result = obj_loader.LoadFile("../assets/gi_test.obj");
+    bool load_result = obj_loader.LoadFile("../assets/gi_test_mini.obj");
     if (load_result) {
         for (int i = 0; i < obj_loader.LoadedMeshes.size(); i++) {
             objl::Mesh curMesh = obj_loader.LoadedMeshes[i];

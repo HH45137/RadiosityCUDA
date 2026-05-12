@@ -54,7 +54,6 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
     // The centroid of the faces
     float3 i_centroid = CalculateTriangleCentroid(face_i);
     float3 j_centroid = CalculateTriangleCentroid(face_j);
-
     // The direction between the faces
     float3 i_to_j_direction = j_centroid - i_centroid;
     // The distance between the faces
@@ -82,10 +81,15 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
         i_corner_on_hemisphere[1] - i_normal * dot(i_corner_on_hemisphere[1] - i_centroid, i_normal),
         i_corner_on_hemisphere[2] - i_normal * dot(i_corner_on_hemisphere[2] - i_centroid, i_normal)
     };
-
-    // Test map_to_floor_from_hemisphere
-    if (fabsf(dot(map_to_floor_from_hemisphere[0] - i_centroid, i_normal)) > 1e-5f) {
-        return 0.0f;
+    for (int i = 0; i < 3; i++) {
+        // Test map_to_floor_from_hemisphere is vertical to i_normal
+        if (fabsf(dot(map_to_floor_from_hemisphere[i] - i_centroid, i_normal)) > 1e-5f) {
+            return -1145.14f;
+        }
+        // Test map_to_floor_from_hemisphere is in hemisphere
+        if (length(map_to_floor_from_hemisphere[i] - i_centroid) > 1.0f + 1e-5f) {
+            return -1919.810f;
+        }
     }
 
     return 1.0f;

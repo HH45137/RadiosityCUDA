@@ -37,25 +37,21 @@ struct {
 } host_var;
 
 
-__device__ float CalculateFormFactor(face_s *face_i, face_s *face_j) {
-    float result{};
+__device__ float3 CalculateTriangleCentroid(face_s &face) {
+    return (face.vertices[0].position +
+            face.vertices[1].position +
+            face.vertices[2].position) / 3.0f;
+}
 
-    const float3 f_i_v1 = face_i->vertices[0].position;
-    const float3 f_i_v2 = face_i->vertices[1].position;
-    const float3 f_i_v3 = face_i->vertices[2].position;
-    const float3 f_j_v1 = face_j->vertices[0].position;
-    const float3 f_j_v2 = face_j->vertices[1].position;
-    const float3 f_j_v3 = face_j->vertices[2].position;
-
+__device__ float CalculateFormFactor(face_s &face_i, face_s &face_j) {
     // The centroid of the faces
-    float3 f_i_centroid = div3(add3(add3(f_i_v1, f_i_v2), f_i_v3), float3{3, 3, 3});
-    float3 f_j_centroid = div3(add3(add3(f_j_v1, f_j_v2), f_j_v3), float3{3, 3, 3});
+    float3 f_i_centroid = CalculateTriangleCentroid(face_i);
+    float3 f_j_centroid = CalculateTriangleCentroid(face_j);
 
     // The distance between the faces
-    float f_ij_distance = fabsf(length3(sub3(f_i_centroid, f_j_centroid)));
-    result = f_ij_distance;
+    float f_ij_distance = fabsf(length(f_i_centroid - f_j_centroid));
 
-    return result;
+    return f_ij_distance;
 }
 
 __global__ void Calculate(
@@ -71,7 +67,6 @@ __global__ void Calculate(
 
     // The face "i" index
     const int f_i_idx = idx / face_count;
-    face_s *f_i = &faces[f_i_idx];
 
     // The face "j" index
     for (int f_j_idx = 0; f_j_idx < face_count; f_j_idx++) {
@@ -79,10 +74,9 @@ __global__ void Calculate(
         if (f_i_idx == f_j_idx) {
             continue;
         }
-        face_s *f_j = &faces[f_j_idx];
 
         // To calculate form-factor between the tow face
-        form_factors_area[idx] = CalculateFormFactor(f_i, f_j);
+        form_factors_area[idx] = CalculateFormFactor(faces[f_i_idx], faces[f_j_idx]);
     }
 }
 

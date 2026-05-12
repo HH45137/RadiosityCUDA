@@ -131,19 +131,23 @@ __global__ void Calculate(
 }
 
 int main(int argc, char *argv[]) {
+    bool is_log{};
     std::vector<face_s> mesh{};
 
     std::cout << "Starting to load the mesh..." << std::endl;
     objl::Loader obj_loader;
 
     std::filesystem::path obj_path("../assets/cube.obj");
-    if (argc > 1) {
+    if (argc >= 2) {
         if (std::filesystem::exists(std::filesystem::path(argv[1]))) {
             obj_path = argv[1];
         } else {
             std::cout << "The path of the obj file was not found!" << std::endl;
             return -1;
         }
+    }
+    if (argc >= 3) {
+        is_log = (std::string(argv[2]) == "log");
     }
     bool load_result = obj_loader.LoadFile(obj_path.string());
     if (load_result) {
@@ -225,10 +229,12 @@ int main(int argc, char *argv[]) {
     ));
 
     // Print results
-    for (int i = 0; i < host_var.form_factor_area_count; i += host_var.face_count) {
-        std::cout << "\nForm factors from face " << (i / host_var.face_count) << " to others:\n";
-        for (int j = 0; j < host_var.face_count; j++) {
-            std::cout << "\t-> face " << j << " : " << host_var.form_factors_area[i + j] << std::endl;
+    if (is_log) {
+        for (int i = 0; i < host_var.form_factor_area_count; i += host_var.face_count) {
+            std::cout << "\nForm factors from face " << (i / host_var.face_count) << " to others:\n";
+            for (int j = 0; j < host_var.face_count; j++) {
+                std::cout << "\t-> face " << j << " : " << host_var.form_factors_area[i + j] << std::endl;
+            }
         }
     }
     std::cout << "All the form-factors have been successfully calculated." << std::endl;

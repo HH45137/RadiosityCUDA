@@ -1,7 +1,9 @@
-﻿#include <iostream>
-#include <fstream>
+﻿// #define OBJL_CONSOLE_OUTPUT
 
-// #define OBJL_CONSOLE_OUTPUT
+#include <iostream>
+#include <fstream>
+#include <filesystem>
+
 #include "OBJ_Loader.h"
 
 #include "math.cu"
@@ -89,12 +91,22 @@ int main(int argc, char *argv[]) {
 
     std::cout << "Starting to load the mesh..." << std::endl;
     objl::Loader obj_loader;
-    bool load_result = obj_loader.LoadFile("../assets/gi_test_mini.obj");
+
+    std::filesystem::path obj_path("../assets/cube.obj");
+    if (argc > 1) {
+        if (std::filesystem::exists(std::filesystem::path(argv[1]))) {
+            obj_path = argv[1];
+        } else {
+            std::cout << "The path of the obj file was not found!" << std::endl;
+            return -1;
+        }
+    }
+    bool load_result = obj_loader.LoadFile(obj_path.string());
     if (load_result) {
         for (int i = 0; i < obj_loader.LoadedMeshes.size(); i++) {
             objl::Mesh curMesh = obj_loader.LoadedMeshes[i];
 
-            std::cout << "Mesh" << ": " << curMesh.MeshName << "\n";
+            // std::cout << "Mesh" << ": " << curMesh.MeshName << "\n";
 
             for (int j = 0; j < curMesh.Indices.size(); j += 3) {
                 unsigned int cur_face_idx = curMesh.Indices[j];
@@ -122,9 +134,10 @@ int main(int argc, char *argv[]) {
             }
         }
     } else {
-        throw std::runtime_error("No mesh loaded");
+        std::cout << "No mesh loaded!" << std::endl;
+        return -1;
     }
-    std::cout << "Mesh loading successful." << std::endl;
+    std::cout << "Mesh: " << obj_path.string() << " loading successful." << std::endl;
 
     std::cout << "Start the work on the GPU side..." << std::endl;
     // Variable

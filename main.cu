@@ -7,38 +7,7 @@
 #include "OBJ_Loader.h"
 
 #include "math.cu"
-
-#define CHECK_CUDA_ERROR(err) \
-    if (err != cudaSuccess) { \
-        printf("CUDA Error: %s (line: %d)\n", cudaGetErrorString(err), __LINE__); \
-        exit(1); \
-    }
-
-struct vertex_s {
-    float3 position{};
-    float3 normal{};
-    float2 uv{};
-};
-
-struct face_s {
-    vertex_s vertices[3]{};
-    float reflectivity{};
-    float3 radiosity{};
-    float3 emission{};
-};
-
-
-struct {
-    face_s *faces{};
-    float3 *faces_lighting{};
-} device_var;
-
-struct {
-    float3 *faces_lighting{};
-    int face_count{};
-    int faces_lighting_count{};
-    int face_lighting_buffer_size{};
-} host_var;
+#include "common.h"
 
 
 __device__ float3 CalculateTriangleCentroid(const face_s &face) {
@@ -160,6 +129,18 @@ __global__ void Calculate(
 
     faces_lighting[idx] = lighting;
 }
+
+struct {
+    face_s *faces{};
+    float3 *faces_lighting{};
+} device_var;
+
+struct {
+    float3 *faces_lighting{};
+    int face_count{};
+    int faces_lighting_count{};
+    int face_lighting_buffer_size{};
+} host_var;
 
 int main(int argc, char *argv[]) {
     bool is_log{};
@@ -284,6 +265,20 @@ int main(int argc, char *argv[]) {
     std::cout << "All the faces lighting have been successfully calculated." << std::endl;
 
     std::cout << "End GPU side work." << std::endl;
+
+    std::cout << "Start saving to obj mesh file..." << std::endl;
+    try {
+        SaveFacesToObjWithMaterial(
+            mesh.data(),
+            host_var.face_count,
+            "output.obj",
+            "output.mtl"
+        );
+        std::cout << "OBJ file saved successfully!" << std::endl;
+    } catch (const std::exception &e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+    std::cout << "The obj file is saved." << std::endl;
 
     std::cout << "Cleaning the program..." << std::endl;
     // Destroy

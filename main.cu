@@ -22,6 +22,9 @@ struct vertex_s {
 
 struct face_s {
     vertex_s vertices[3]{};
+    float reflectivity{};
+    float3 radiosity{};
+    float3 emission{};
 };
 
 
@@ -120,19 +123,9 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
     return face_area / hemisphere_floor_area;
 }
 
-__global__ void Calculate(
-    face_s *faces,
-    int face_count,
-    float3 *faces_lighting
-) {
-    const int f_i_idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (f_i_idx >= face_count) {
-        return;
-    }
-
-    float3 accumulated_lighting = {0.0f, 0.0f, 0.0f};
-
+__device__ float3 CalculateLighting(face_s *faces, int face_count, int f_i_idx) {
+    // Sum F_ij * B_j
+    float3 sum{};
     for (int f_j_idx = 0; f_j_idx < face_count; f_j_idx++) {
         // Skip the self face
         if (f_i_idx == f_j_idx) {
@@ -142,14 +135,30 @@ __global__ void Calculate(
         // Calculate form-factor between face_i and face_j
         const float form_factor = CalculateFormFactor(faces[f_i_idx], faces[f_j_idx]);
 
-        float3 lighting{};
-        lighting = lighting + form_factor;
-
-        // Accumulate lighting
-        accumulated_lighting = lighting;
+        sum += faces[f_j_idx].radiosity * form_factor;
     }
 
-    faces_lighting[f_i_idx] = accumulated_lighting;
+    float3 accumulated_lighting{};
+    // Accumulate lighting
+    accumulated_lighting += sum * faces[f_i_idx].reflectivity + faces[f_i_idx].emission;
+
+    return accumulated_lighting;
+}
+
+__global__ void Calculate(
+    face_s *faces,
+    int face_count,
+    float3 *faces_lighting
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= face_count) {
+        return;
+    }
+
+    float3 lighting = CalculateLighting(faces, face_count, idx);
+
+    faces_lighting[idx] = lighting;
 }
 
 int main(int argc, char *argv[]) {
@@ -201,6 +210,9 @@ int main(int argc, char *argv[]) {
                 cur_face.vertices[0].uv = float2(v1.TextureCoordinate.X, v1.TextureCoordinate.Y);
                 cur_face.vertices[1].uv = float2(v2.TextureCoordinate.X, v2.TextureCoordinate.Y);
                 cur_face.vertices[2].uv = float2(v3.TextureCoordinate.X, v3.TextureCoordinate.Y);
+
+                cur_face.reflectivity = 0.5f;
+                cur_face.emission = {0.3, 0.3, 0.3};
 
                 mesh.push_back(cur_face);
             }

@@ -92,7 +92,13 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
     return face_area / hemisphere_floor_area;
 }
 
-__device__ float3 CalculateLighting(face_s *faces, int face_count, int f_i_idx) {
+__global__ void CalculateLighting(face_s *faces, int face_count, float3 *in_rad, float3 *out_rad) {
+    const int f_i_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (f_i_idx >= face_count) {
+        return;
+    }
+
     // Sum F_ij * B_j
     float3 sum{};
     for (int f_j_idx = 0; f_j_idx < face_count; f_j_idx++) {
@@ -104,35 +110,16 @@ __device__ float3 CalculateLighting(face_s *faces, int face_count, int f_i_idx) 
         // Calculate form-factor between face_i and face_j
         const float form_factor = CalculateFormFactor(faces[f_i_idx], faces[f_j_idx]);
 
-        sum += faces[f_j_idx].radiosity * form_factor;
+        sum += in_rad[f_j_idx] * form_factor;
     }
 
-    float3 accumulated_lighting{};
-    // Accumulate lighting
-    accumulated_lighting += sum * faces[f_i_idx].reflectivity + faces[f_i_idx].emission;
-
-    return accumulated_lighting;
-}
-
-__global__ void Calculate(
-    face_s *faces,
-    int face_count,
-    float3 *faces_lighting
-) {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (idx >= face_count) {
-        return;
-    }
-
-    float3 lighting = CalculateLighting(faces, face_count, idx);
-
-    faces_lighting[idx] = lighting;
+    out_rad[f_i_idx] = sum * faces[f_i_idx].reflectivity + faces[f_i_idx].emission;
 }
 
 struct {
     face_s *faces{};
     float3 *faces_lighting{};
+    float3 *faces_lighting_old{};
 } device_var;
 
 struct {
@@ -143,6 +130,7 @@ struct {
 } host_var;
 
 int main(int argc, char *argv[]) {
+    int bounce_num = 4;
     bool is_log{};
     std::vector<face_s> mesh{};
 
@@ -218,8 +206,13 @@ int main(int argc, char *argv[]) {
     host_var.faces_lighting = new float3[host_var.face_count]();
 
     // Initial
+    // The initial faces emission
+    for (int i = 0; i < host_var.face_count; i++) {
+        host_var.faces_lighting[i] = mesh[i].emission;
+    }
     CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces, host_var.face_count * sizeof(face_s)));
     CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces_lighting, host_var.face_lighting_buffer_size));
+    CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces_lighting_old, host_var.face_lighting_buffer_size));
 
     // Copy
     CHECK_CUDA_ERROR(cudaMemcpy(
@@ -228,17 +221,31 @@ int main(int argc, char *argv[]) {
         host_var.face_count * sizeof(face_s),
         cudaMemcpyHostToDevice
     ));
+    CHECK_CUDA_ERROR(cudaMemcpy(
+        device_var.faces_lighting_old,
+        host_var.faces_lighting,
+        host_var.face_lighting_buffer_size,
+        cudaMemcpyHostToDevice
+    ));
 
     // Block and Grid size
     int block_size = 256;
     int grid_size = (host_var.face_count + block_size - 1) / block_size;
 
     // Call kernel
-    Calculate<<<grid_size,block_size>>>(
-        device_var.faces,
-        host_var.face_count,
-        device_var.faces_lighting
-    );
+    for (int i = 0; i < bounce_num; i += 1) {
+        CalculateLighting<<<grid_size,block_size>>>(
+            device_var.faces,
+            host_var.face_count,
+            device_var.faces_lighting_old,
+            device_var.faces_lighting
+        );
+
+        // Swap buffer
+        float3 *temp = device_var.faces_lighting_old;
+        device_var.faces_lighting_old = device_var.faces_lighting;
+        device_var.faces_lighting = temp;
+    }
 
     // Get error
     CHECK_CUDA_ERROR(cudaGetLastError());
@@ -247,7 +254,7 @@ int main(int argc, char *argv[]) {
     // Fetch from GPU
     CHECK_CUDA_ERROR(cudaMemcpy(
         host_var.faces_lighting,
-        device_var.faces_lighting,
+        device_var.faces_lighting_old,
         host_var.face_lighting_buffer_size,
         cudaMemcpyDeviceToHost
     ));
@@ -270,6 +277,7 @@ int main(int argc, char *argv[]) {
     try {
         SaveFacesToObjWithMaterial(
             mesh.data(),
+            host_var.faces_lighting,
             host_var.face_count,
             "output.obj",
             "output.mtl"
@@ -284,6 +292,7 @@ int main(int argc, char *argv[]) {
     // Destroy
     CHECK_CUDA_ERROR(cudaFree(device_var.faces));
     CHECK_CUDA_ERROR(cudaFree(device_var.faces_lighting));
+    CHECK_CUDA_ERROR(cudaFree(device_var.faces_lighting_old));
     delete[] host_var.faces_lighting;
     mesh.clear();
 

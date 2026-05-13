@@ -27,6 +27,7 @@ struct face_s {
 
 inline void SaveFacesToObjWithMaterial(
     const face_s *faces,
+    const float3 *rads,
     size_t faces_count,
     const char *obj_filename,
     const char *mtl_filename
@@ -42,10 +43,12 @@ inline void SaveFacesToObjWithMaterial(
     for (size_t i = 0; i < faces_count; ++i) {
         mtl_file << "newmtl material_" << i << "\n";
 
+        float3 cur_rad = rads[i];
+
         // Kd = diffuse color (using radiosity)
-        mtl_file << "Kd " << faces[i].radiosity.x << " "
-                << faces[i].radiosity.y << " "
-                << faces[i].radiosity.z << "\n";
+        mtl_file << "Kd " << cur_rad.x << " "
+                << cur_rad.y << " "
+                << cur_rad.z << "\n";
 
         // Ke = emission color
         mtl_file << "Ke " << faces[i].emission.x << " "

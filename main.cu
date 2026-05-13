@@ -131,6 +131,7 @@ struct {
 
 int main(int argc, char *argv[]) {
     int bounce_num = 4;
+    float emission_arg = 1.0;
     bool is_log{};
     std::vector<face_s> mesh{};
 
@@ -147,7 +148,10 @@ int main(int argc, char *argv[]) {
         }
     }
     if (argc >= 3) {
-        is_log = (std::string(argv[2]) == "log");
+        emission_arg = std::stof(argv[2]);
+    }
+    if (argc >= 4) {
+        is_log = (std::string(argv[3]) == "log");
     }
     bool load_result = obj_loader.LoadFile(obj_path.string());
     if (load_result) {
@@ -182,9 +186,9 @@ int main(int argc, char *argv[]) {
 
                 if (!cur_mesh.MeshName.compare("LIGHT_MESH")) {
                     cur_face.reflectivity = 0.5f;
-                    cur_face.emission = {1000.0f, 800.0f, 200.0f};
+                    cur_face.emission = {emission_arg, emission_arg, emission_arg};
                 } else {
-                    cur_face.reflectivity = 0.2f;
+                    cur_face.reflectivity = 0.7f;
                     cur_face.emission = {0.0, 0.0, 0.0};
                 }
 

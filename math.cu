@@ -23,6 +23,20 @@ static __device__ __host__ float3 operator+(const float3 &a, const float &b) {
     };
 }
 
+static __device__ __host__ float3 &operator+=(float3 &a, const float3 &b) {
+    a.x += b.x;
+    a.y += b.y;
+    a.z += b.z;
+    return a;
+}
+
+static __device__ __host__ float3 &operator+=(float3 &a, const float &b) {
+    a.x += b;
+    a.y += b;
+    a.z += b;
+    return a;
+}
+
 static __device__ __host__ float3 operator-(const float3 &a, const float3 &b) {
     return float3{
         a.x - b.x,
@@ -37,6 +51,20 @@ static __device__ __host__ float3 operator-(const float3 &a, const float &b) {
         a.y - b,
         a.z - b
     };
+}
+
+static __device__ __host__ float3 &operator-=(float3 &a, const float3 &b) {
+    a.x -= b.x;
+    a.y -= b.y;
+    a.z -= b.z;
+    return a;
+}
+
+static __device__ __host__ float3 &operator-=(float3 &a, const float &b) {
+    a.x -= b;
+    a.y -= b;
+    a.z -= b;
+    return a;
 }
 
 static __device__ __host__ float3 operator*(const float3 &a, const float3 &b) {
@@ -55,6 +83,20 @@ static __device__ __host__ float3 operator*(const float3 &a, const float &b) {
     };
 }
 
+static __device__ __host__ float3 &operator*=(float3 &a, const float3 &b) {
+    a.x *= b.x;
+    a.y *= b.y;
+    a.z *= b.z;
+    return a;
+}
+
+static __device__ __host__ float3 &operator*=(float3 &a, const float &b) {
+    a.x *= b;
+    a.y *= b;
+    a.z *= b;
+    return a;
+}
+
 static __device__ __host__ float3 operator/(const float3 &a, const float3 &b) {
     return float3{
         a.x / b.x,
@@ -71,12 +113,30 @@ static __device__ __host__ float3 operator/(const float3 &a, const float &b) {
     };
 }
 
+static __device__ __host__ float3 &operator/=(float3 &a, const float3 &b) {
+    a.x /= b.x;
+    a.y /= b.y;
+    a.z /= b.z;
+    return a;
+}
+
+static __device__ __host__ float3 &operator/=(float3 &a, const float &b) {
+    a.x /= b;
+    a.y /= b;
+    a.z /= b;
+    return a;
+}
+
 static __device__ __host__ float length(const float3 &a) {
     return sqrtf(powf(a.x, 2) + powf(a.y, 2) + powf(a.z, 2));
 }
 
 static __device__ __host__ float3 normalized(const float3 &a) {
-    return a / length(a);
+    float len = length(a);
+    if (len < 1e-8f) {
+        return float3{0.0f, 0.0f, 0.0f};
+    }
+    return a / len;
 }
 
 static __device__ __host__ float3 cross(const float3 &a, const float3 &b) {

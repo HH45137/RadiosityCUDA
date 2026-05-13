@@ -22,18 +22,22 @@ struct vertex_s {
 
 struct face_s {
     vertex_s vertices[3]{};
+    float reflectivity{};
+    float3 radiosity{};
+    float3 emission{};
 };
 
 
 struct {
     face_s *faces{};
-    float *form_factors_area{};
+    float3 *faces_lighting{};
 } device_var;
 
 struct {
-    float *form_factors_area{};
+    float3 *faces_lighting{};
     int face_count{};
-    int form_factor_area_count{};
+    int faces_lighting_count{};
+    int face_lighting_buffer_size{};
 } host_var;
 
 
@@ -58,36 +62,49 @@ __device__ float CalculateTriangleArea(const float3 vertices[3]) {
 }
 
 __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j) {
+    // The floor area of hemisphere
+    const float hemisphere_radius = 1.0f;
+    const float hemisphere_floor_area = CUDART_PI_F * (hemisphere_radius * hemisphere_radius);
+
     // The centroid of the faces
-    float3 i_centroid = CalculateTriangleCentroid(face_i);
-    float3 j_centroid = CalculateTriangleCentroid(face_j);
+    const float3 i_centroid = CalculateTriangleCentroid(face_i);
+    const float3 j_centroid = CalculateTriangleCentroid(face_j);
+
     // The direction between the faces
-    float3 i_to_j_direction = j_centroid - i_centroid;
+    const float3 i_to_j_direction = j_centroid - i_centroid;
+
+    // The normal of face i
+    const float3 i_normal = CalculateTriangleNormal(face_i);
+
+    // Backface culling
+    if (dot(i_to_j_direction, i_normal) < 0.0f) {
+        return 0.0f;
+    }
+
     // The distance between the faces
     float i_to_j_distance = fabsf(length(i_to_j_direction));
+
     // The vectors form the three corners of face j to the centroid of face i
     float3 i_corner_to_j_centroid[3] = {
         normalized(face_j.vertices[0].position - i_centroid),
         normalized(face_j.vertices[1].position - i_centroid),
         normalized(face_j.vertices[2].position - i_centroid)
     };
-    // The normal of face i
-    float3 i_normal = CalculateTriangleNormal(face_i);
-    // The floor area of hemisphere
-    const float hemisphere_radius = 1.0f;
-    const float hemisphere_floor_area = CUDART_PI_F * (hemisphere_radius * hemisphere_radius);
+
     // Map the face i on hemisphere
     float3 i_corner_on_hemisphere[3] = {
         i_centroid + i_corner_to_j_centroid[0] * hemisphere_radius,
         i_centroid + i_corner_to_j_centroid[1] * hemisphere_radius,
         i_centroid + i_corner_to_j_centroid[2] * hemisphere_radius
     };
+
     // Map "i_corner_on_hemisphere" to floor from hemisphere
     float3 map_to_floor_from_hemisphere[3] = {
         i_corner_on_hemisphere[0] - i_normal * dot(i_corner_on_hemisphere[0] - i_centroid, i_normal),
         i_corner_on_hemisphere[1] - i_normal * dot(i_corner_on_hemisphere[1] - i_centroid, i_normal),
         i_corner_on_hemisphere[2] - i_normal * dot(i_corner_on_hemisphere[2] - i_centroid, i_normal)
     };
+    // Verification
     for (int i = 0; i < 3; i++) {
         // Test map_to_floor_from_hemisphere is vertical to i_normal
         if (fabsf(dot(map_to_floor_from_hemisphere[i] - i_centroid, i_normal)) > 1e-5f) {
@@ -98,6 +115,7 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
             return -1919.810f;
         }
     }
+
     // The face area
     float face_area = CalculateTriangleArea(map_to_floor_from_hemisphere);
 
@@ -105,29 +123,42 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
     return face_area / hemisphere_floor_area;
 }
 
+__device__ float3 CalculateLighting(face_s *faces, int face_count, int f_i_idx) {
+    // Sum F_ij * B_j
+    float3 sum{};
+    for (int f_j_idx = 0; f_j_idx < face_count; f_j_idx++) {
+        // Skip the self face
+        if (f_i_idx == f_j_idx) {
+            continue;
+        }
+
+        // Calculate form-factor between face_i and face_j
+        const float form_factor = CalculateFormFactor(faces[f_i_idx], faces[f_j_idx]);
+
+        sum += faces[f_j_idx].radiosity * form_factor;
+    }
+
+    float3 accumulated_lighting{};
+    // Accumulate lighting
+    accumulated_lighting += sum * faces[f_i_idx].reflectivity + faces[f_i_idx].emission;
+
+    return accumulated_lighting;
+}
+
 __global__ void Calculate(
     face_s *faces,
     int face_count,
-    float *form_factors_area
+    float3 *faces_lighting
 ) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (idx >= face_count * face_count) {
+    if (idx >= face_count) {
         return;
     }
 
-    // The face "i" index
-    const int f_i_idx = idx / face_count;
-    // The face "j" index
-    const int f_j_idx = idx % face_count;
+    float3 lighting = CalculateLighting(faces, face_count, idx);
 
-    // Skip the current self face
-    if (f_i_idx == f_j_idx) {
-        return;
-    }
-
-    // To calculate form-factor between the tow face
-    form_factors_area[idx] = CalculateFormFactor(faces[f_i_idx], faces[f_j_idx]);
+    faces_lighting[idx] = lighting;
 }
 
 int main(int argc, char *argv[]) {
@@ -157,11 +188,13 @@ int main(int argc, char *argv[]) {
             // std::cout << "Mesh" << ": " << curMesh.MeshName << "\n";
 
             for (int j = 0; j < curMesh.Indices.size(); j += 3) {
-                unsigned int cur_face_idx = curMesh.Indices[j];
+                unsigned int i1 = curMesh.Indices[j];
+                unsigned int i2 = curMesh.Indices[j + 1];
+                unsigned int i3 = curMesh.Indices[j + 2];
 
-                objl::Vertex v1 = curMesh.Vertices[cur_face_idx];
-                objl::Vertex v2 = curMesh.Vertices[cur_face_idx + 1];
-                objl::Vertex v3 = curMesh.Vertices[cur_face_idx + 2];
+                objl::Vertex v1 = curMesh.Vertices[i1];
+                objl::Vertex v2 = curMesh.Vertices[i2];
+                objl::Vertex v3 = curMesh.Vertices[i3];
 
                 face_s cur_face{};
 
@@ -178,6 +211,9 @@ int main(int argc, char *argv[]) {
                 cur_face.vertices[1].uv = float2(v2.TextureCoordinate.X, v2.TextureCoordinate.Y);
                 cur_face.vertices[2].uv = float2(v3.TextureCoordinate.X, v3.TextureCoordinate.Y);
 
+                cur_face.reflectivity = 0.5f;
+                cur_face.emission = {0.3, 0.3, 0.3};
+
                 mesh.push_back(cur_face);
             }
         }
@@ -190,12 +226,13 @@ int main(int argc, char *argv[]) {
     std::cout << "Start the work on the GPU side..." << std::endl;
     // Variable
     host_var.face_count = mesh.size();
-    host_var.form_factor_area_count = host_var.face_count * host_var.face_count;
-    host_var.form_factors_area = new float[host_var.form_factor_area_count]();
+    host_var.faces_lighting_count = host_var.face_count;
+    host_var.face_lighting_buffer_size = host_var.faces_lighting_count * sizeof(float3);
+    host_var.faces_lighting = new float3[host_var.face_count]();
 
     // Initial
     CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces, host_var.face_count * sizeof(face_s)));
-    CHECK_CUDA_ERROR(cudaMalloc(&device_var.form_factors_area, host_var.form_factor_area_count * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces_lighting, host_var.face_lighting_buffer_size));
 
     // Copy
     CHECK_CUDA_ERROR(cudaMemcpy(
@@ -207,13 +244,13 @@ int main(int argc, char *argv[]) {
 
     // Block and Grid size
     int block_size = 256;
-    int grid_size = (host_var.form_factor_area_count + block_size - 1) / block_size;
+    int grid_size = (host_var.face_count + block_size - 1) / block_size;
 
     // Call kernel
     Calculate<<<grid_size,block_size>>>(
         device_var.faces,
         host_var.face_count,
-        device_var.form_factors_area
+        device_var.faces_lighting
     );
 
     // Get error
@@ -222,30 +259,31 @@ int main(int argc, char *argv[]) {
 
     // Fetch from GPU
     CHECK_CUDA_ERROR(cudaMemcpy(
-        host_var.form_factors_area,
-        device_var.form_factors_area,
-        host_var.form_factor_area_count * sizeof(float),
+        host_var.faces_lighting,
+        device_var.faces_lighting,
+        host_var.face_lighting_buffer_size,
         cudaMemcpyDeviceToHost
     ));
 
     // Print results
     if (is_log) {
-        for (int i = 0; i < host_var.form_factor_area_count; i += host_var.face_count) {
-            std::cout << "\nForm factors from face " << (i / host_var.face_count) << " to others:\n";
-            for (int j = 0; j < host_var.face_count; j++) {
-                std::cout << "\t-> face " << j << " : " << host_var.form_factors_area[i + j] << std::endl;
-            }
+        for (int i = 0; i < host_var.faces_lighting_count; i += 1) {
+            std::cout << std::fixed << std::setprecision(8);
+            std::cout << "Face " << i << " lighting: \n\t" <<
+                    "R: " << host_var.faces_lighting[i].x << " " <<
+                    "G: " << host_var.faces_lighting[i].y << " " <<
+                    "B: " << host_var.faces_lighting[i].z << std::endl;
         }
     }
-    std::cout << "All the form-factors have been successfully calculated." << std::endl;
+    std::cout << "All the faces lighting have been successfully calculated." << std::endl;
 
     std::cout << "End GPU side work." << std::endl;
 
     std::cout << "Cleaning the program..." << std::endl;
     // Destroy
     CHECK_CUDA_ERROR(cudaFree(device_var.faces));
-    CHECK_CUDA_ERROR(cudaFree(device_var.form_factors_area));
-    delete[] host_var.form_factors_area;
+    CHECK_CUDA_ERROR(cudaFree(device_var.faces_lighting));
+    delete[] host_var.faces_lighting;
     mesh.clear();
 
     return 0;

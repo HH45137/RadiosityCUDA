@@ -27,13 +27,14 @@ struct face_s {
 
 struct {
     face_s *faces{};
-    float *form_factors_area{};
+    float3 *faces_lighting{};
 } device_var;
 
 struct {
-    float *form_factors_area{};
+    float3 *faces_lighting{};
     int face_count{};
-    int form_factor_area_count{};
+    int faces_lighting_count{};
+    int face_lighting_buffer_size{};
 } host_var;
 
 
@@ -108,11 +109,11 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
 __global__ void Calculate(
     face_s *faces,
     int face_count,
-    float *form_factors_area
+    float3 *faces_lighting
 ) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (idx >= face_count * face_count) {
+    if (idx >= face_count) {
         return;
     }
 
@@ -127,7 +128,7 @@ __global__ void Calculate(
     }
 
     // To calculate form-factor between the tow face
-    form_factors_area[idx] = CalculateFormFactor(faces[f_i_idx], faces[f_j_idx]);
+    faces_lighting[idx].x = {CalculateFormFactor(faces[f_i_idx], faces[f_j_idx])};
 }
 
 int main(int argc, char *argv[]) {
@@ -190,12 +191,13 @@ int main(int argc, char *argv[]) {
     std::cout << "Start the work on the GPU side..." << std::endl;
     // Variable
     host_var.face_count = mesh.size();
-    host_var.form_factor_area_count = host_var.face_count * host_var.face_count;
-    host_var.form_factors_area = new float[host_var.form_factor_area_count]();
+    host_var.faces_lighting_count = host_var.face_count;
+    host_var.face_lighting_buffer_size = host_var.faces_lighting_count * sizeof(float3);
+    host_var.faces_lighting = new float3[host_var.face_lighting_buffer_size]();
 
     // Initial
     CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces, host_var.face_count * sizeof(face_s)));
-    CHECK_CUDA_ERROR(cudaMalloc(&device_var.form_factors_area, host_var.form_factor_area_count * sizeof(float)));
+    CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces_lighting, host_var.face_lighting_buffer_size));
 
     // Copy
     CHECK_CUDA_ERROR(cudaMemcpy(
@@ -207,13 +209,13 @@ int main(int argc, char *argv[]) {
 
     // Block and Grid size
     int block_size = 256;
-    int grid_size = (host_var.form_factor_area_count + block_size - 1) / block_size;
+    int grid_size = (host_var.faces_lighting_count + block_size - 1) / block_size;
 
     // Call kernel
     Calculate<<<grid_size,block_size>>>(
         device_var.faces,
         host_var.face_count,
-        device_var.form_factors_area
+        device_var.faces_lighting
     );
 
     // Get error
@@ -222,30 +224,31 @@ int main(int argc, char *argv[]) {
 
     // Fetch from GPU
     CHECK_CUDA_ERROR(cudaMemcpy(
-        host_var.form_factors_area,
-        device_var.form_factors_area,
-        host_var.form_factor_area_count * sizeof(float),
+        host_var.faces_lighting,
+        device_var.faces_lighting,
+        host_var.face_lighting_buffer_size,
         cudaMemcpyDeviceToHost
     ));
 
     // Print results
     if (is_log) {
-        for (int i = 0; i < host_var.form_factor_area_count; i += host_var.face_count) {
-            std::cout << "\nForm factors from face " << (i / host_var.face_count) << " to others:\n";
-            for (int j = 0; j < host_var.face_count; j++) {
-                std::cout << "\t-> face " << j << " : " << host_var.form_factors_area[i + j] << std::endl;
-            }
+        for (int i = 0; i < host_var.faces_lighting_count; i += 1) {
+            std::cout << std::fixed << std::setprecision(8);
+            std::cout << "Face " << i << " lighting: \n\t" <<
+                    "R: " << host_var.faces_lighting[i].x << " " <<
+                    "G: " << host_var.faces_lighting[i].y << " " <<
+                    "B: " << host_var.faces_lighting[i].z << std::endl;
         }
     }
-    std::cout << "All the form-factors have been successfully calculated." << std::endl;
+    std::cout << "All the faces lighting have been successfully calculated." << std::endl;
 
     std::cout << "End GPU side work." << std::endl;
 
     std::cout << "Cleaning the program..." << std::endl;
     // Destroy
     CHECK_CUDA_ERROR(cudaFree(device_var.faces));
-    CHECK_CUDA_ERROR(cudaFree(device_var.form_factors_area));
-    delete[] host_var.form_factors_area;
+    CHECK_CUDA_ERROR(cudaFree(device_var.faces_lighting));
+    delete[] host_var.faces_lighting;
     mesh.clear();
 
     return 0;

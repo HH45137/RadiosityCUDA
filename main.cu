@@ -183,18 +183,18 @@ int main(int argc, char *argv[]) {
     bool load_result = obj_loader.LoadFile(obj_path.string());
     if (load_result) {
         for (int i = 0; i < obj_loader.LoadedMeshes.size(); i++) {
-            objl::Mesh curMesh = obj_loader.LoadedMeshes[i];
+            objl::Mesh cur_mesh = obj_loader.LoadedMeshes[i];
 
-            // std::cout << "Mesh" << ": " << curMesh.MeshName << "\n";
+            std::cout << "Mesh" << ": " << cur_mesh.MeshName << "\n";
 
-            for (int j = 0; j < curMesh.Indices.size(); j += 3) {
-                unsigned int i1 = curMesh.Indices[j];
-                unsigned int i2 = curMesh.Indices[j + 1];
-                unsigned int i3 = curMesh.Indices[j + 2];
+            for (int j = 0; j < cur_mesh.Indices.size(); j += 3) {
+                unsigned int i1 = cur_mesh.Indices[j];
+                unsigned int i2 = cur_mesh.Indices[j + 1];
+                unsigned int i3 = cur_mesh.Indices[j + 2];
 
-                objl::Vertex v1 = curMesh.Vertices[i1];
-                objl::Vertex v2 = curMesh.Vertices[i2];
-                objl::Vertex v3 = curMesh.Vertices[i3];
+                objl::Vertex v1 = cur_mesh.Vertices[i1];
+                objl::Vertex v2 = cur_mesh.Vertices[i2];
+                objl::Vertex v3 = cur_mesh.Vertices[i3];
 
                 face_s cur_face{};
 
@@ -211,8 +211,14 @@ int main(int argc, char *argv[]) {
                 cur_face.vertices[1].uv = float2(v2.TextureCoordinate.X, v2.TextureCoordinate.Y);
                 cur_face.vertices[2].uv = float2(v3.TextureCoordinate.X, v3.TextureCoordinate.Y);
 
-                cur_face.reflectivity = 0.5f;
-                cur_face.emission = {0.3, 0.3, 0.3};
+                if (!cur_mesh.MeshName.compare("LIGHT_MESH")) {
+                    cur_face.reflectivity = 0.5f;
+                    cur_face.emission = {1.0f, 1.0f, 1.0f};
+                } else {
+                    cur_face.reflectivity = 0.2f;
+                    cur_face.emission = {0.0, 0.0, 0.0};
+                }
+
 
                 mesh.push_back(cur_face);
             }

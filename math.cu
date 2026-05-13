@@ -76,7 +76,11 @@ static __device__ __host__ float length(const float3 &a) {
 }
 
 static __device__ __host__ float3 normalized(const float3 &a) {
-    return a / length(a);
+    float len = length(a);
+    if (len < 1e-8f) {
+        return float3{0.0f, 0.0f, 0.0f};
+    }
+    return a / len;
 }
 
 static __device__ __host__ float3 cross(const float3 &a, const float3 &b) {

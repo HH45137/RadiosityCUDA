@@ -213,7 +213,7 @@ int main(int argc, char *argv[]) {
 
                 if (!cur_mesh.MeshName.compare("LIGHT_MESH")) {
                     cur_face.reflectivity = 0.5f;
-                    cur_face.emission = {1.0f, 1.0f, 1.0f};
+                    cur_face.emission = {1.0f, 0.8f, 0.2f};
                 } else {
                     cur_face.reflectivity = 0.2f;
                     cur_face.emission = {0.0, 0.0, 0.0};

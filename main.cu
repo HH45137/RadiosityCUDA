@@ -7,38 +7,7 @@
 #include "OBJ_Loader.h"
 
 #include "math.cu"
-
-#define CHECK_CUDA_ERROR(err) \
-    if (err != cudaSuccess) { \
-        printf("CUDA Error: %s (line: %d)\n", cudaGetErrorString(err), __LINE__); \
-        exit(1); \
-    }
-
-struct vertex_s {
-    float3 position{};
-    float3 normal{};
-    float2 uv{};
-};
-
-struct face_s {
-    vertex_s vertices[3]{};
-    float reflectivity{};
-    float3 radiosity{};
-    float3 emission{};
-};
-
-
-struct {
-    face_s *faces{};
-    float3 *faces_lighting{};
-} device_var;
-
-struct {
-    float3 *faces_lighting{};
-    int face_count{};
-    int faces_lighting_count{};
-    int face_lighting_buffer_size{};
-} host_var;
+#include "common.h"
 
 
 __device__ float3 CalculateTriangleCentroid(const face_s &face) {
@@ -123,7 +92,13 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
     return face_area / hemisphere_floor_area;
 }
 
-__device__ float3 CalculateLighting(face_s *faces, int face_count, int f_i_idx) {
+__global__ void CalculateLighting(face_s *faces, int face_count, float3 *in_rad, float3 *out_rad) {
+    const int f_i_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (f_i_idx >= face_count) {
+        return;
+    }
+
     // Sum F_ij * B_j
     float3 sum{};
     for (int f_j_idx = 0; f_j_idx < face_count; f_j_idx++) {
@@ -135,33 +110,28 @@ __device__ float3 CalculateLighting(face_s *faces, int face_count, int f_i_idx) 
         // Calculate form-factor between face_i and face_j
         const float form_factor = CalculateFormFactor(faces[f_i_idx], faces[f_j_idx]);
 
-        sum += faces[f_j_idx].radiosity * form_factor;
+        sum += in_rad[f_j_idx] * form_factor;
     }
 
-    float3 accumulated_lighting{};
-    // Accumulate lighting
-    accumulated_lighting += sum * faces[f_i_idx].reflectivity + faces[f_i_idx].emission;
-
-    return accumulated_lighting;
+    out_rad[f_i_idx] = sum * faces[f_i_idx].reflectivity + faces[f_i_idx].emission;
 }
 
-__global__ void Calculate(
-    face_s *faces,
-    int face_count,
-    float3 *faces_lighting
-) {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+struct {
+    face_s *faces{};
+    float3 *faces_lighting{};
+    float3 *faces_lighting_old{};
+} device_var;
 
-    if (idx >= face_count) {
-        return;
-    }
-
-    float3 lighting = CalculateLighting(faces, face_count, idx);
-
-    faces_lighting[idx] = lighting;
-}
+struct {
+    float3 *faces_lighting{};
+    int face_count{};
+    int faces_lighting_count{};
+    int face_lighting_buffer_size{};
+} host_var;
 
 int main(int argc, char *argv[]) {
+    int bounce_num = 4;
+    float emission_arg = 1.0;
     bool is_log{};
     std::vector<face_s> mesh{};
 
@@ -178,23 +148,26 @@ int main(int argc, char *argv[]) {
         }
     }
     if (argc >= 3) {
-        is_log = (std::string(argv[2]) == "log");
+        emission_arg = std::stof(argv[2]);
+    }
+    if (argc >= 4) {
+        is_log = (std::string(argv[3]) == "log");
     }
     bool load_result = obj_loader.LoadFile(obj_path.string());
     if (load_result) {
         for (int i = 0; i < obj_loader.LoadedMeshes.size(); i++) {
-            objl::Mesh curMesh = obj_loader.LoadedMeshes[i];
+            objl::Mesh cur_mesh = obj_loader.LoadedMeshes[i];
 
-            // std::cout << "Mesh" << ": " << curMesh.MeshName << "\n";
+            std::cout << "Mesh" << ": " << cur_mesh.MeshName << "\n";
 
-            for (int j = 0; j < curMesh.Indices.size(); j += 3) {
-                unsigned int i1 = curMesh.Indices[j];
-                unsigned int i2 = curMesh.Indices[j + 1];
-                unsigned int i3 = curMesh.Indices[j + 2];
+            for (int j = 0; j < cur_mesh.Indices.size(); j += 3) {
+                unsigned int i1 = cur_mesh.Indices[j];
+                unsigned int i2 = cur_mesh.Indices[j + 1];
+                unsigned int i3 = cur_mesh.Indices[j + 2];
 
-                objl::Vertex v1 = curMesh.Vertices[i1];
-                objl::Vertex v2 = curMesh.Vertices[i2];
-                objl::Vertex v3 = curMesh.Vertices[i3];
+                objl::Vertex v1 = cur_mesh.Vertices[i1];
+                objl::Vertex v2 = cur_mesh.Vertices[i2];
+                objl::Vertex v3 = cur_mesh.Vertices[i3];
 
                 face_s cur_face{};
 
@@ -211,8 +184,14 @@ int main(int argc, char *argv[]) {
                 cur_face.vertices[1].uv = float2(v2.TextureCoordinate.X, v2.TextureCoordinate.Y);
                 cur_face.vertices[2].uv = float2(v3.TextureCoordinate.X, v3.TextureCoordinate.Y);
 
-                cur_face.reflectivity = 0.5f;
-                cur_face.emission = {0.3, 0.3, 0.3};
+                if (!cur_mesh.MeshName.compare("LIGHT_MESH")) {
+                    cur_face.reflectivity = 0.5f;
+                    cur_face.emission = {emission_arg, emission_arg, emission_arg};
+                } else {
+                    cur_face.reflectivity = 0.7f;
+                    cur_face.emission = {0.0, 0.0, 0.0};
+                }
+
 
                 mesh.push_back(cur_face);
             }
@@ -231,8 +210,13 @@ int main(int argc, char *argv[]) {
     host_var.faces_lighting = new float3[host_var.face_count]();
 
     // Initial
+    // The initial faces emission
+    for (int i = 0; i < host_var.face_count; i++) {
+        host_var.faces_lighting[i] = mesh[i].emission;
+    }
     CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces, host_var.face_count * sizeof(face_s)));
     CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces_lighting, host_var.face_lighting_buffer_size));
+    CHECK_CUDA_ERROR(cudaMalloc(&device_var.faces_lighting_old, host_var.face_lighting_buffer_size));
 
     // Copy
     CHECK_CUDA_ERROR(cudaMemcpy(
@@ -241,17 +225,31 @@ int main(int argc, char *argv[]) {
         host_var.face_count * sizeof(face_s),
         cudaMemcpyHostToDevice
     ));
+    CHECK_CUDA_ERROR(cudaMemcpy(
+        device_var.faces_lighting_old,
+        host_var.faces_lighting,
+        host_var.face_lighting_buffer_size,
+        cudaMemcpyHostToDevice
+    ));
 
     // Block and Grid size
     int block_size = 256;
     int grid_size = (host_var.face_count + block_size - 1) / block_size;
 
     // Call kernel
-    Calculate<<<grid_size,block_size>>>(
-        device_var.faces,
-        host_var.face_count,
-        device_var.faces_lighting
-    );
+    for (int i = 0; i < bounce_num; i += 1) {
+        CalculateLighting<<<grid_size,block_size>>>(
+            device_var.faces,
+            host_var.face_count,
+            device_var.faces_lighting_old,
+            device_var.faces_lighting
+        );
+
+        // Swap buffer
+        float3 *temp = device_var.faces_lighting_old;
+        device_var.faces_lighting_old = device_var.faces_lighting;
+        device_var.faces_lighting = temp;
+    }
 
     // Get error
     CHECK_CUDA_ERROR(cudaGetLastError());
@@ -260,7 +258,7 @@ int main(int argc, char *argv[]) {
     // Fetch from GPU
     CHECK_CUDA_ERROR(cudaMemcpy(
         host_var.faces_lighting,
-        device_var.faces_lighting,
+        device_var.faces_lighting_old,
         host_var.face_lighting_buffer_size,
         cudaMemcpyDeviceToHost
     ));
@@ -279,10 +277,26 @@ int main(int argc, char *argv[]) {
 
     std::cout << "End GPU side work." << std::endl;
 
+    std::cout << "Start saving to obj mesh file..." << std::endl;
+    try {
+        SaveFacesToObjWithMaterial(
+            mesh.data(),
+            host_var.faces_lighting,
+            host_var.face_count,
+            "output.obj",
+            "output.mtl"
+        );
+        std::cout << "OBJ file saved successfully!" << std::endl;
+    } catch (const std::exception &e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+    std::cout << "The obj file is saved." << std::endl;
+
     std::cout << "Cleaning the program..." << std::endl;
     // Destroy
     CHECK_CUDA_ERROR(cudaFree(device_var.faces));
     CHECK_CUDA_ERROR(cudaFree(device_var.faces_lighting));
+    CHECK_CUDA_ERROR(cudaFree(device_var.faces_lighting_old));
     delete[] host_var.faces_lighting;
     mesh.clear();
 

@@ -5,7 +5,9 @@ set(CMAKE_CUDA_STANDARD 20)
 
 add_executable(RadiosityCUDA main.cu
         OBJ_Loader.h
-        math.cu)
+        math.cu
+        obj_io.h
+        common.h)
 
 set_target_properties(RadiosityCUDA PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON

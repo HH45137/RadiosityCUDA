@@ -92,7 +92,7 @@ __device__ float CalculateFormFactor(const face_s &face_i, const face_s &face_j)
     return face_area / hemisphere_floor_area;
 }
 
-__global__ void CalculateLighting(face_s *faces, int face_count, float3 *in_rad, float3 *out_rad) {
+__global__ void CalculateLighting(face_s *faces, int face_count, float3 *in_rad, float3 *out_rad, int bounce_count) {
     const int f_i_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (f_i_idx >= face_count) {
@@ -113,7 +113,11 @@ __global__ void CalculateLighting(face_s *faces, int face_count, float3 *in_rad,
         sum += in_rad[f_j_idx] * form_factor;
     }
 
-    out_rad[f_i_idx] = sum * faces[f_i_idx].reflectivity + faces[f_i_idx].emission;
+    if (bounce_count != 0) {
+        out_rad[f_i_idx] = sum * faces[f_i_idx].reflectivity + faces[f_i_idx].emission;
+    } else {
+        out_rad[f_i_idx] = sum * faces[f_i_idx].reflectivity;
+    }
 }
 
 struct {
@@ -130,8 +134,7 @@ struct {
 } host_var;
 
 int main(int argc, char *argv[]) {
-    int bounce_num = 4;
-    float emission_arg = 1.0;
+    int bounce_num = 8;
     bool is_log{};
     std::vector<face_s> mesh{};
 
@@ -148,10 +151,7 @@ int main(int argc, char *argv[]) {
         }
     }
     if (argc >= 3) {
-        emission_arg = std::stof(argv[2]);
-    }
-    if (argc >= 4) {
-        is_log = (std::string(argv[3]) == "log");
+        is_log = (std::string(argv[2]) == "log");
     }
     bool load_result = obj_loader.LoadFile(obj_path.string());
     if (load_result) {
@@ -184,11 +184,11 @@ int main(int argc, char *argv[]) {
                 cur_face.vertices[1].uv = float2(v2.TextureCoordinate.X, v2.TextureCoordinate.Y);
                 cur_face.vertices[2].uv = float2(v3.TextureCoordinate.X, v3.TextureCoordinate.Y);
 
-                if (!cur_mesh.MeshName.compare("LIGHT_MESH")) {
+                if (cur_mesh.MeshName.find("LIGHT_MESH") != std::string::npos) {
                     cur_face.reflectivity = 0.5f;
-                    cur_face.emission = {emission_arg, emission_arg, emission_arg};
+                    cur_face.emission = float3{0.9f, 0.9f, 0.7f} * 10.0f;
                 } else {
-                    cur_face.reflectivity = 0.7f;
+                    cur_face.reflectivity = 0.3f;
                     cur_face.emission = {0.0, 0.0, 0.0};
                 }
 
@@ -242,7 +242,8 @@ int main(int argc, char *argv[]) {
             device_var.faces,
             host_var.face_count,
             device_var.faces_lighting_old,
-            device_var.faces_lighting
+            device_var.faces_lighting,
+            i
         );
 
         // Swap buffer

@@ -436,6 +436,7 @@ namespace objl
 
 
 			std::ifstream file(Path);
+			std::filesystem::path parent_dir = std::filesystem::path(Path).parent_path();
 
 			if (!file.is_open())
 				return false;
@@ -663,7 +664,7 @@ namespace objl
 					#endif
 
 					// Load Materials
-					LoadMaterials(pathtomat);
+					LoadMaterials(parent_dir.string() + "/" + pathtomat);
 				}
 			}
 

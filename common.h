@@ -56,7 +56,7 @@ inline void SaveFacesToObjWithMaterial(
                 << faces[i].emission.z << "\n";
 
         // Ns = specular exponent (mapped from reflectivity)
-        mtl_file << "Ns " << (faces[i].reflectivity) << "\n";
+        mtl_file << "Ns " << (faces[i].reflectivity * 128.0f) << "\n";
         mtl_file << "\n";
     }
     mtl_file.close();

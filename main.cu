@@ -184,14 +184,17 @@ int main(int argc, char *argv[]) {
                 cur_face.vertices[1].uv = float2(v2.TextureCoordinate.X, v2.TextureCoordinate.Y);
                 cur_face.vertices[2].uv = float2(v3.TextureCoordinate.X, v3.TextureCoordinate.Y);
 
+                cur_face.reflectivity = cur_mesh.MeshMaterial.Ks.X;
                 if (cur_mesh.MeshName.find("LIGHT_MESH") != std::string::npos) {
-                    cur_face.reflectivity = 0.5f;
-                    cur_face.emission = float3{0.9f, 0.9f, 0.7f} * 10.0f;
+                    float3 color = float3{
+                        cur_mesh.MeshMaterial.Kd.X,
+                        cur_mesh.MeshMaterial.Kd.Y,
+                        cur_mesh.MeshMaterial.Kd.Z,
+                    };
+                    cur_face.emission = {color.x, color.y, color.z};
                 } else {
-                    cur_face.reflectivity = 0.3f;
-                    cur_face.emission = {0.0, 0.0, 0.0};
+                    cur_face.emission = {0, 0, 0};
                 }
-
 
                 mesh.push_back(cur_face);
             }

@@ -2,6 +2,15 @@
 
 namespace RadCu {
 
+void CheckCudaError(cudaError err) {
+  do {
+    if (err != cudaSuccess) {
+      fprintf(stderr, "CUDA Error: %s (Line: %d)\n", cudaGetErrorString(err), __LINE__);
+      exit(EXIT_FAILURE);
+    }
+  } while (false);
+}
+
 glm::vec3 CalculateTriangleCentroid(const face_s &face) {
   return (face.vertices[0].position + face.vertices[1].position + face.vertices[2].position) / 3.0f;
 }

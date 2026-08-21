@@ -4,14 +4,7 @@
 #include <glm/glm.hpp>
 
 namespace RadCu {
-inline void CheckCudaError(cudaError err) {
-  do {
-    if (err != cudaSuccess) {
-      fprintf(stderr, "CUDA Error: %s (Line: %d)\n", cudaGetErrorString(err), __LINE__);
-      exit(EXIT_FAILURE);
-    }
-  } while (false);
-}
+void CheckCudaError(cudaError err);
 
 struct vertex_s {
   glm::vec3 position{};

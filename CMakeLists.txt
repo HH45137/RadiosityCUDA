@@ -11,8 +11,10 @@ find_package(glm REQUIRED)
 
 add_executable(${PROJECT_NAME}
         main.cu
-        common.cuh
+        src/RadiosityCuda.cu
 )
+
+target_include_directories(${PROJECT_NAME} PUBLIC include/)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON

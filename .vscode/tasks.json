@@ -29,7 +29,9 @@
         "kind": "build",
         "isDefault": true
       },
-      "dependsOn": ["cmake: configure"],
+      "dependsOn": [
+        "cmake: configure"
+      ],
       "problemMatcher": "$gcc"
     },
     {

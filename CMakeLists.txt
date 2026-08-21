@@ -2,16 +2,20 @@ cmake_minimum_required(VERSION 4.2)
 project(RadiosityCUDA CUDA)
 
 set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-add_executable(RadiosityCUDA main.cu
-        OBJ_Loader.h
-        math.cu
-        obj_io.h
-        common.h)
+# Debug device and global function is must have
+set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G --generate-line-info")
 
-set_target_properties(RadiosityCUDA PROPERTIES
+find_package(glm REQUIRED)
+
+add_executable(${PROJECT_NAME}
+        main.cu
+        common.cuh
+)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
 )
 
-set(CMAKE_CUDA_FLAGS "--generate-line-info")
-
+target_link_libraries(${PROJECT_NAME} PRIVATE glm::glm)

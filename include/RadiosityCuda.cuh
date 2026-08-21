@@ -1,5 +1,9 @@
 ﻿#pragma once
 
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 

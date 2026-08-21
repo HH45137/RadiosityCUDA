@@ -1,7 +1,6 @@
 ﻿#include <RadiosityCuda.cuh>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
+
+#if 0
 
 static struct {
   RadCu::face_s *faces{};
@@ -117,6 +116,14 @@ int main(int argc, char *argv[]) {
   RadCu::CheckCudaError(cudaFree(device_var.faces_lighting_old));
   delete[] host_var.faces_lighting;
   mesh.clear();
+
+  return 0;
+}
+
+#endif
+
+int main(int argc, char *argv[]) {
+  std::cout << "-----------== Radiosity-Cuda ==-----------" << std::endl;
 
   return 0;
 }

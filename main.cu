@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < host_var.faces_lighting_count; i += 1) {
       std::cout << std::fixed << std::setprecision(8);
       std::cout << "Face " << i << " lighting: \n\t" << "R: " << host_var.faces_lighting[i].x << " "
-                << "G: " << host_var.faces_lighting[i].y << " " << "B: " << host_var.faces_lighting[i].z << std::endl;
+          << "G: " << host_var.faces_lighting[i].y << " " << "B: " << host_var.faces_lighting[i].z << std::endl;
     }
   }
   std::cout << "All the faces lighting have been successfully calculated." << std::endl;

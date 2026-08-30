@@ -7,7 +7,8 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 # Debug device and global function is must have
 set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G --generate-line-info")
 
-find_package(glm REQUIRED)
+# find_package(glm REQUIRED)
+add_subdirectory(thirdparty/glm)
 
 add_executable(${PROJECT_NAME}
         main.cu
